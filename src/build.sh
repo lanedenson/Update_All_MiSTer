@@ -22,7 +22,7 @@ find build/src -type f ! -name '*.py' -exec rm -f {} +
 find build/src -exec touch -t 202108231405 {} +
 
 export SOURCE_DATE_EPOCH=0
-python -m zipapp build/src -o build/update_all.pyz -p "/usr/bin/env python3"
+python3 -m zipapp build/src -o build/update_all.pyz -p "/usr/bin/env python3"
 
 cat <<-EOF
 #!/usr/bin/env bash
