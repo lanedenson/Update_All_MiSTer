@@ -190,6 +190,7 @@ class ArcadeOrganizerService:
         config['HOMEBREW'] = ini_parser.get_bool_flag_presence('HOMEBREW', BoolFlagPresence.ONLY_IN_OWN_FOLDER)
 
         config['ROTATION_DIR'] = ini_parser.get_bool('ROTATION_DIR', True)
+        config['VERTICAL_DIR'] = ini_parser.get_bool('VERTICAL_DIR', False)
         config['RESOLUTION_DIR'] = ini_parser.get_bool('RESOLUTION_DIR', True)
         config['REGION_DIR'] = ini_parser.get_bool('REGION_DIR', True)
         config['YEAR_DIR'] = ini_parser.get_bool('YEAR_DIR', True)
@@ -246,6 +247,7 @@ class ArcadeOrganizerService:
         config['ORGDIR_Collections'] = "%s/_3 Collections" % config['ORGDIR']
         config['ORGDIR_VideoNInputs'] = "%s/_4 Video & Inputs" % config['ORGDIR']
         config['ORGDIR_ExtraSoftware'] = "%s/_5 Extra Software" % config['ORGDIR']
+        config['ORGDIR_Vertical'] = f"{base_path}/_Vertical"
 
         config['ORGDIR_Platform'] = "%s/_1 By Platform" % config['ORGDIR_Collections']
         config['ORGDIR_Core'] = "%s/_2 By MiSTer Core" % config['ORGDIR_Collections']
@@ -281,6 +283,8 @@ class ArcadeOrganizerService:
             config['ORGDIR_VideoNInputs'],
             config['ORGDIR_ExtraSoftware'],
         ]
+        if config['VERTICAL_DIR']:
+            config['ORGDIR_DIRECTORIES'].append(config['ORGDIR_Vertical'])
 
         config['ROTATION_DIRECTORIES'] = {
             0: "Horizontal",
@@ -1183,6 +1187,8 @@ class ArcadeOrganizer:
             self.create_rotation_symlink(90, 270)
             self.create_rotation_symlink(180, 0)
             self.create_rotation_symlink(270, 90)
+        if self._config['VERTICAL_DIR'] and self._description['rotation'] in (90, 270):
+            self.create_symlink(self._config['ORGDIR_Vertical'])
 
     def create_resolution(self):
         self.impl_create_single_link('RESOLUTION_DIR', 'resolution', 'ORGDIR_Resolution')

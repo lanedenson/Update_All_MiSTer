@@ -28,6 +28,7 @@ _Organized
 
 * Region
 * Rotation (0-90-180-270 ± flip)
+* Optional top-level `_Vertical` folder beside MiSTer's core folders (combines clockwise and counter-clockwise games)
 * Resolution (15-24-31kHz)
 * Platform
 * Series

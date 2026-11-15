@@ -366,6 +366,7 @@ class TestArcadeOrganizerIntegration(unittest.TestCase):
             BOOTLEG=2,  # EVERYWHERE
             HOMEBREW=2,  # EVERYWHERE
             ROTATION_DIR=True,
+            VERTICAL_DIR=True,
             RESOLUTION_DIR=True,
             REGION_DIR=True,
             YEAR_DIR=True,
@@ -392,9 +393,13 @@ class TestArcadeOrganizerIntegration(unittest.TestCase):
         self.assertTrue(os.path.exists(self.orgdir), "Organized directory should exist")
 
         actual_paths = self._get_organized_mra_paths()
+        vertical_games_dir = Path(config['ORGDIR_Vertical'])
 
         # With all options enabled, each MRA gets placed in many directories
         self.assertGreater(len(actual_paths), 100, "Should have many organized MRA paths with all options enabled")
+        self.assertEqual(Path(self.base_path), vertical_games_dir.parent)
+        self.assertTrue((vertical_games_dir / '1942.mra').is_symlink())
+        self.assertTrue((vertical_games_dir / 'pacman.mra').is_symlink())
 
         # Verify key paths exist (sampling from different organization categories)
         required_paths = {

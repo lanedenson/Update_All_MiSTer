@@ -4478,6 +4478,7 @@ def settings_screen_model():
             "header": "Arcade Organizer Rotation Options",
             "variables": {
                 "arcade_organizer_rotation_dir": {"rename": "rotation_dir", "group": "ao_ini", "default": "true", "values": ["false", "true"]},
+                "arcade_organizer_vertical_dir": {"rename": "vertical_dir", "group": "ao_ini", "default": "false", "values": ["false", "true"]},
                 "arcade_organizer_rotation_0": {"rename": "rotation_0", "group": "ao_ini", "default": "true", "values": ["false", "true"]},
                 "arcade_organizer_rotation_90": {"rename": "rotation_90", "group": "ao_ini", "default": "true", "values": ["false", "true"]},
                 "arcade_organizer_rotation_270": {"rename": "rotation_270", "group": "ao_ini", "default": "true", "values": ["false", "true"]},
@@ -4489,6 +4490,11 @@ def settings_screen_model():
                     "title": "# Rotation folders",
                     "description": "{arcade_organizer_rotation_dir:yesno}",
                     "actions": {"ok": [{"type": "rotate_variable", "target": "arcade_organizer_rotation_dir"}]}
+                },
+                {
+                    "title": "# Top-level Vertical folder",
+                    "description": "{arcade_organizer_vertical_dir:yesno}",
+                    "actions": {"ok": [{"type": "rotate_variable", "target": "arcade_organizer_vertical_dir"}]}
                 },
                 {
                     "title": "# Horizontal",
