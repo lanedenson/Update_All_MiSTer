@@ -4492,7 +4492,7 @@ def settings_screen_model():
                     "actions": {"ok": [{"type": "rotate_variable", "target": "arcade_organizer_rotation_dir"}]}
                 },
                 {
-                    "title": "# Top-level Vertical folder",
+                    "title": "# Vertical games in top-level list",
                     "description": "{arcade_organizer_vertical_dir:yesno}",
                     "actions": {"ok": [{"type": "rotate_variable", "target": "arcade_organizer_vertical_dir"}]}
                 },

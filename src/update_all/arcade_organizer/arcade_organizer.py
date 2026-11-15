@@ -224,8 +224,10 @@ class ArcadeOrganizerService:
 
         self._migrate_old_arcade_organizer_cache(base_path)
 
-        config['ARCADE_ORGANIZER_VERSION'] = "2.0"
+        config['ARCADE_ORGANIZER_VERSION'] = "2.1"
+        config['MISTER_ROOT'] = Path(base_path).absolute()
         config['ARCADE_ORGANIZER_WORK_PATH'] = os.getenv('ARCADE_ORGANIZER_WORK_PATH', f"{base_path}/Scripts/.config/arcade-organizer")
+        config['VERTICAL_MRA_LINKS_FILE'] = Path(config['ARCADE_ORGANIZER_WORK_PATH']) / 'vertical-mra-links.json'
         names_txt_file = os.getenv('ARCADE_ORGANIZER_NAMES_TXT', f"{base_path}/Scripts/.config/arcade_names/arcade_names.txt")
         if names_txt_file == f"{base_path}/names.txt":
             names_txt_file = f"{base_path}/Scripts/.config/arcade_names/arcade_names.txt"
@@ -247,7 +249,7 @@ class ArcadeOrganizerService:
         config['ORGDIR_Collections'] = "%s/_3 Collections" % config['ORGDIR']
         config['ORGDIR_VideoNInputs'] = "%s/_4 Video & Inputs" % config['ORGDIR']
         config['ORGDIR_ExtraSoftware'] = "%s/_5 Extra Software" % config['ORGDIR']
-        config['ORGDIR_Vertical'] = f"{base_path}/_Vertical"
+        config['ORGDIR_Vertical'] = base_path
 
         config['ORGDIR_Platform'] = "%s/_1 By Platform" % config['ORGDIR_Collections']
         config['ORGDIR_Core'] = "%s/_2 By MiSTer Core" % config['ORGDIR_Collections']
@@ -283,9 +285,6 @@ class ArcadeOrganizerService:
             config['ORGDIR_VideoNInputs'],
             config['ORGDIR_ExtraSoftware'],
         ]
-        if config['VERTICAL_DIR']:
-            config['ORGDIR_DIRECTORIES'].append(config['ORGDIR_Vertical'])
-
         config['ROTATION_DIRECTORIES'] = {
             0: "Horizontal",
             90: "Vertical (CW)",
@@ -407,6 +406,7 @@ class Infrastructure:
         self._fetcher = fetcher
         self._init_private_variables()
         self._os_errors = []
+        self._vertical_mra_links = self._read_vertical_mra_links()
 
     def errors(self):
         return self._os_errors
@@ -419,27 +419,89 @@ class Infrastructure:
     def make_symlink(self, mra_path, name, directory):
         target = Path(directory) / sanitize_path_component(name)
         if target.is_file() or target.is_symlink():
-            return
+            return False
         try:
             self.make_directory(target.parent)
         except Exception as e:
             self._printer.print("Line %s || %s (%s)" % (lineno(), e, mra_path))
-            return
+            return False
         src = str(mra_path.absolute())
         dst = str(target.absolute())
         if self._config['PRINT_SYMLINKS']:
             self._printer.print("make_symlink: src %s dst %s" % (src, dst))
+            return False
         else:
             try:
                 if self._config['NO_SYMLINKS']:
                     shutil.copy(src, dst)
                 else:
                     os.symlink(src, dst)
+                return True
             except FileExistsError:
-                pass
+                return False
             except OSError as e:
                 self._printer.print("Line %s || %s (%s)" % (lineno(), e, mra_path))
                 self._os_errors.append((mra_path, e))
+                return False
+
+    def register_vertical_mra_link(self, mra_path, target):
+        source = str(mra_path.absolute())
+        if target.is_symlink() and os.readlink(target) == source:
+            entry = {'target': str(target.absolute()), 'source': source, 'type': 'symlink'}
+        elif self._config['NO_SYMLINKS'] and target.is_file() and mra_path.is_file():
+            entry = {
+                'target': str(target.absolute()),
+                'source': source,
+                'type': 'copy',
+                'md5': hashlib.md5(mra_path.read_bytes()).hexdigest(),
+            }
+        else:
+            return
+        self._vertical_mra_links[str(target.absolute())] = entry
+
+    def remove_vertical_mra_links(self):
+        for entry in self._vertical_mra_links.values():
+            target = Path(entry['target'])
+            source = entry['source']
+            if not self._is_vertical_mra_link_in_root(entry, target):
+                continue
+            if entry['type'] == 'symlink' and target.is_symlink() and os.readlink(target) == source:
+                target.unlink()
+            elif entry['type'] == 'copy' and target.is_file() and Path(source).is_file():
+                digest = hashlib.md5(target.read_bytes()).hexdigest()
+                if digest == entry['md5'] == hashlib.md5(Path(source).read_bytes()).hexdigest():
+                    target.unlink()
+        self._vertical_mra_links.clear()
+
+    def remove_broken_vertical_mra_links(self):
+        for target_text, entry in list(self._vertical_mra_links.items()):
+            target = Path(target_text)
+            if self._is_vertical_mra_link_in_root(entry, target) and \
+                    target.is_symlink() and not target.exists() and os.readlink(target) == entry['source']:
+                target.unlink()
+                del self._vertical_mra_links[target_text]
+
+    def _is_vertical_mra_link_in_root(self, entry, target):
+        root = self._config['MISTER_ROOT'].resolve()
+        mra_root = Path(self._config['MRADIR']).resolve()
+        source = Path(entry['source']).resolve()
+        return target.parent.resolve() == root and (source == mra_root or mra_root in source.parents)
+
+    def write_vertical_mra_links(self):
+        path = self._config['VERTICAL_MRA_LINKS_FILE']
+        self.make_directory(path.parent)
+        path.write_text(json.dumps(list(self._vertical_mra_links.values()), indent=2) + '\n')
+
+    def _read_vertical_mra_links(self):
+        path = self._config['VERTICAL_MRA_LINKS_FILE']
+        if not path.is_file():
+            return {}
+        try:
+            entries = json.loads(path.read_text())
+            return {entry['target']: entry for entry in entries}
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            self._printer.print("Could not read vertical MRA links file %s: %s" % (path, e))
+            return {}
 
     def download_mad_db_zip(self):
         # @TODO: Enable this in the next version after the deprecation and remove the deprecated section.
@@ -570,10 +632,13 @@ class Infrastructure:
             shutil.copy(str(self._config['ARCADE_ORGANIZER_NAMES_TXT']), str(self._cached_names_path))
 
     def handle_orgdir_outside_mra_folder(self):
-        org_rp = Path(os.path.realpath(self._config['ORGDIR']))
+        self._handle_orgdir_outside_mra_folder(self._config['ORGDIR'])
+
+    def _handle_orgdir_outside_mra_folder(self, orgdir):
+        org_rp = Path(os.path.realpath(orgdir))
         mra_rp = Path(os.path.realpath(self._config['MRADIR']))
 
-        org_cores = Path("%s/cores" % self._config['ORGDIR'])
+        org_cores = Path("%s/cores" % orgdir)
         mra_cores = Path("%s/cores" % self._config['MRADIR'])
         if mra_rp not in org_rp.parents and not org_cores.is_dir() and mra_cores.is_dir():
             try:
@@ -675,7 +740,8 @@ class Infrastructure:
         file_path.unlink()
 
     def check_if_orgdir_directories_are_missing(self):
-        return any(not Path(directory).is_dir() for directory in self._read_orgdir_file_lines())
+        return any(not Path(directory).is_dir() for directory in self._read_orgdir_file_lines()) or \
+            any(not Path(entry['target']).is_file() for entry in self._vertical_mra_links.values())
 
     def check_if_names_txt_is_new(self):
         return self._config['ARCADE_ORGANIZER_NAMES_TXT'].is_file() \
@@ -1188,7 +1254,16 @@ class ArcadeOrganizer:
             self.create_rotation_symlink(180, 0)
             self.create_rotation_symlink(270, 90)
         if self._config['VERTICAL_DIR'] and self._description['rotation'] in (90, 270):
-            self.create_symlink(self._config['ORGDIR_Vertical'])
+            self.create_vertical_mra_link(self._config['ORGDIR_Vertical'])
+
+    def create_vertical_mra_link(self, directory):
+        target = Path(directory) / sanitize_path_component(self._basename_mra)
+        if self._infra.make_symlink(self._mra_path, self._basename_mra, directory):
+            self._infra.register_vertical_mra_link(self._mra_path, target)
+        if self._config['PREPEND_YEAR']:
+            year_target = Path(directory) / sanitize_path_component(self._year_name)
+            if self._infra.make_symlink(self._mra_path, self._year_name, directory):
+                self._infra.register_vertical_mra_link(self._mra_path, year_target)
 
     def create_resolution(self):
         self.impl_create_single_link('RESOLUTION_DIR', 'resolution', 'ORGDIR_Resolution')
@@ -1347,16 +1422,19 @@ class ArcadeOrganizer:
             self._printer.print("Performing a full build.")
             self._infra.remove_last_run_file()
             self._infra.remove_orgdir_directories(orgdir_folders_file)
+            self._infra.remove_vertical_mra_links()
         else:
             self._printer.print("Performing an incremental build.")
             self._printer.print("NOTE: Remove the Organized folders if you wish to start from scratch.")
             self._infra.remove_all_broken_symlinks()
+            self._infra.remove_broken_vertical_mra_links()
 
         self._printer.print()
 
         updated_mras = self._mra_finder.find_all_mras()
 
         if len(updated_mras) == 0:
+            self._infra.write_vertical_mra_links()
             self._printer.print("No new MRAs detected")
             self._printer.print()
             self._printer.print("Skipping Arcade Organizer...")
@@ -1379,6 +1457,7 @@ class ArcadeOrganizer:
         self.organize_topdir()
 
         self._infra.write_orgdir_folders_file()
+        self._infra.write_vertical_mra_links()
 
         self._infra.handle_orgdir_outside_mra_folder()
 

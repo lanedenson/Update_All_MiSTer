@@ -397,9 +397,13 @@ class TestArcadeOrganizerIntegration(unittest.TestCase):
 
         # With all options enabled, each MRA gets placed in many directories
         self.assertGreater(len(actual_paths), 100, "Should have many organized MRA paths with all options enabled")
-        self.assertEqual(Path(self.base_path), vertical_games_dir.parent)
+        self.assertEqual(Path(self.base_path), vertical_games_dir)
         self.assertTrue((vertical_games_dir / '1942.mra').is_symlink())
         self.assertTrue((vertical_games_dir / 'pacman.mra').is_symlink())
+        self.assertEqual(
+            str((Path(self.mradir) / '1942.mra').absolute()),
+            os.readlink(vertical_games_dir / '1942.mra'),
+        )
 
         # Verify key paths exist (sampling from different organization categories)
         required_paths = {
@@ -434,6 +438,38 @@ class TestArcadeOrganizerIntegration(unittest.TestCase):
         first_required_path = next(iter(sorted(required_paths)))
         full_path = os.path.join(self.orgdir, first_required_path)
         self.assertTrue(os.path.islink(full_path), f"{first_required_path} should be a symlink")
+
+    def test_organize___after_vertical_mra_link_is_deleted___recreates_it(self):
+        config = self._make_config(VERTICAL_DIR=True)
+        self._run_organizer(config)
+
+        vertical_mra = Path(config['ORGDIR_Vertical']) / '1942.mra'
+        vertical_mra.unlink()
+
+        logger = self._run_organizer(config)
+
+        self.assertIn('Some ORGDIR directories are missing.', logger.print_lines)
+        self.assertIn('Performing a full build.', logger.print_lines)
+        self.assertTrue(vertical_mra.is_symlink())
+
+    def test_organize___vertical_root_copies___removes_only_organizer_managed_copies(self):
+        config = self._make_config(VERTICAL_DIR=True, NO_SYMLINKS=True)
+        self._run_organizer(config)
+
+        vertical_mra = Path(self.base_path) / '1942.mra'
+        protected_file = Path(self.base_path) / 'keep.txt'
+        protected_file.write_text('user data')
+        self.assertTrue(vertical_mra.is_file())
+        self.assertFalse(vertical_mra.is_symlink())
+
+        config = self._make_config(VERTICAL_DIR=False, NO_SYMLINKS=True)
+        last_run_file = Path(config['ARCADE_ORGANIZER_WORK_PATH']) / 'last_run'
+        last_run_lines = last_run_file.read_text().splitlines()
+        last_run_file.write_text('\n'.join([last_run_lines[0], '2000-01-01T00:00:00Z', last_run_lines[2]]) + '\n')
+        self._run_organizer(config)
+
+        self.assertFalse(vertical_mra.exists())
+        self.assertEqual('user data', protected_file.read_text())
 
     def test_organize___with_bootleg_filter___excludes_bootleg_games(self):
         """Test that bootleg filter works correctly."""
